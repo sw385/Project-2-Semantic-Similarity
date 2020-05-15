@@ -11,7 +11,7 @@ def phaseOne(data, sc):
             results.append(pair)
     phaseOne = sc.parallelize(results)
     mapped = phaseOne.map(lambda x: (x, 1)) # ((document_id, term), 1)
-    occurrences = mapped.groupByKey().mapValues(len) # ((document_id, term, occurrences))
+    occurrences = mapped.groupByKey().mapValues(len) # ((document_id, term), occurrences)
     return occurrences
 
 
