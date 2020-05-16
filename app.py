@@ -139,10 +139,12 @@ def main():
 
     # for element in term_tfidf.collect():
         # print(element)
+    # for element in term_tfidf.top(10, key=lambda x: x[1]):
+        # print(element)
+
+    term_tfidf = term_tfidf.filter(lambda x: 'gene_' == x[0][1][:5] and '_gene' == x[0][1][-5:])
     for element in term_tfidf.top(10, key=lambda x: x[1]):
         print(element)
-
-
     
     # transform ((document_id, term), tf*idf) to (docid, (term, tfidf))
     similarities = term_tfidf.map(sim_1_map)
@@ -158,7 +160,7 @@ def main():
     similarities = similarities.map(partial(sim_2_map, query_tfidfs))
     # (term, (numerator, denominator2))
 
-    # sum to obtain the dot product (numerator), denominator 1, and denominator 2
+    # sum to obtain the dot product (numerator) and denominator 2 (but not denominator1)
     similarities = similarities.reduceByKey(sim_2_red)
 
     # calculate the semantic similarity for each term
@@ -168,7 +170,7 @@ def main():
     similarities = similarities.filter(lambda x: x[1][1] != 0)
 
     # collect and sort the similarities, and return the top n terms
-    top = similarities.top(10, key=lambda x: x[1][1])
+    top = similarities.top(15, key=lambda x: x[1][1])
     for element in top:
         print(element)
     # top = [f[1] for f in top]
