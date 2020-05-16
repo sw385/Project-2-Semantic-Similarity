@@ -1,5 +1,7 @@
 from pyspark import SparkContext
 from math import log
+from sys import argv
+from functools import partial
 
 def phaseOne(data, sc):
     print ("phase 1 ----------------------------------------------")
@@ -55,7 +57,59 @@ def phaseThree(data, sc, num_of_documents):
     reduced = sc.parallelize(results) # ((document_id, term), (term_occurrences, total_word_count_doc, num_word_in_all_docs))
     reduced2 = reduced.map(lambda x: ((x[0][0], x[0][1]), ((float(x[1][0])/float(x[1][1]))*(log(float(num_of_documents)/float(x[1][2]))))))
     # ((document_id, term), tf*idf)
+    # print(reduced2.collect())
     return reduced2
+
+
+
+
+
+def sim_1_map(query, element):
+    # element: ((docid, term), tfidf)
+    # print("semantic similarity phase 1 map --------------------------")
+    # print(element)
+    docid = element[0][0]
+    term = element[0][1]
+    tfidf = element[1]
+    return (docid, (query.value, term, tfidf))
+
+def sim_2_map(query_tfidfs, element):
+    # element: (docid, (query, term, tfidf))
+    # print("semantic similarity phase 2 map --------------------------")
+    # iterating through a list for every element = inefficient
+    term = element[1][1]
+    v1 = [f for f in query_tfidfs if f[0] == element[0]][0][1][2]
+    v2 = element[1][2]
+    return (term, (v1 * v2, v1 * v1, v2 * v2))
+
+def sim_2_red(element1, element2):
+    # element: (term, (v1 * v2, v1 * v1, v2 * v2))
+    # print("semantic similarity phase 2 reduce --------------------------")
+    # cannot square root and multiply until the end
+    numerator = element1[0] + element2[0]
+    denominator1 = element1[1] + element2[1]
+    denominator2 = element1[2] + element2[2]
+    return (numerator, denominator1, denominator2)
+
+def sim_4_map(element):
+    # element: (term, (numerator, denominator1, denominator2))
+    # output: (null, (term, semantic_similarity))
+    print("semantic similarity phase 3 map --------------------------")
+    numerator = element[1][0]
+    denominator1 = element[1][1]
+    denominator2 = element[1][2]
+    semantic_similarity = numerator / ((denominator1 ** 0.5) * (denominator2 ** 0.5))
+    return (null, (element[0], semantic_similarity))
+
+'''
+this step doesn't need a reduce, just turn the collection into a sorted list
+def sim_4_red():
+    print("semantic similarity phase 3 reduce --------------------------")
+    pass
+'''
+
+
+    
 
 def main():
 
@@ -63,6 +117,9 @@ def main():
     sc = SparkContext("local", "project")
     file = "project2_test.txt"
     data = sc.textFile(file)
+    query = sc.broadcast(argv[1])
+    # convert unicode to ascii
+    data = data.map(lambda x: x.encode("ascii", "ignore"))
     num_of_documents = data.count()
 
     # first phase
@@ -77,5 +134,41 @@ def main():
     # ((document_id, term), tf*idf)
     term_tfidf = data_three
 
+
+
+
+
+    # print(term_tfidf.take(5))
+    # "partial" lets us pass arguments into the passed function
+    similarities = term_tfidf.map(partial(sim_1_map, query))
+    # print(similarities.take(5))
+    # print(similarities.collect())
+
+    # this is a map step, not a reduce step
+    # the issue here is that we need to pull out the query term's tf-idf in each partition
+    # a straightforward reduce would not be sufficient
+    # we have a collection/dataframe, but also need a particular value from that collection to be applied over the other values
+    # shouldn't use broadcast, the values we need are already collected within each node
+    # shouldn't use collect, since we need to "collect" for each dataframe
+    # aggregate?
+    # similarities.foreachPartition(function1)
+    # foreachPartition will encounter issues since we're in a single node
+    # print(len(similarities.collect()))
+    # I don't see a way to pass a different value into each partition's function call
+    query_tfidfs = similarities.filter(lambda x: x[1][0] == query.value).collect()
+    # print(query_tfidfs)
+    # similarities = similarities.filter(lambda x: x[1][0] != query.value)
+    similarities = similarities.map(partial(sim_2_map, query_tfidfs))
+    # print(similarities.take(5))
+
+    similarities = similarities.reduceByKey(sim_2_red)
+    print(similarities.take(20))
+    # similarities = similarities.map(sim_3_map)
+    # similarities = similarities.reduce(sim_3_red)
+
+    print('nathaniel')
+
+    query.unpersist()
+
 if __name__ == "__main__":
-  main()
+    main()
