@@ -46,7 +46,7 @@ def phaseThree(data, sc, num_of_documents):
     # map
     mapped = data.map(lambda x: (x[0][1], (x[0][0], x[1][0], x[1][1]))) # (term, (document_id, term_occurrences, total_word_count_doc))
 
-    #reduce
+    # reduce
     results = []
     mapped2 = mapped.groupByKey().mapValues(list).collect() # (term, [(document_id, term_occurrences, total_word_count_doc)])
     for term in mapped2:
@@ -66,7 +66,6 @@ def phaseThree(data, sc, num_of_documents):
 def sim_1_map(element):
     # element: ((docid, term), tfidf)
     # print("semantic similarity phase 1 map --------------------------")
-    # print(element)
     docid = element[0][0]
     term = element[0][1]
     tfidf = element[1]
@@ -75,41 +74,39 @@ def sim_1_map(element):
 def sim_2_map(query_tfidfs, element):
     # element: (docid, (term, tfidf))
     # print("semantic similarity phase 2 map --------------------------")
-    # print(element)
     term = element[1][0]
-    # iterating through a list for every element = inefficient, use a dict instead
-    # v1 = [f for f in query_tfidfs if f[0] == element[0]][0][1][2]
     if element[0] in query_tfidfs:
         v1 = query_tfidfs[element[0]]    # the tfidf of our query for this docid
     else:
         v1 = 0
     v2 = element[1][1]
     # (term, (numerator, denominator2))
-    return (term, (v1 * v2, v2 * v2))
+    return (term, (v1 * v2, v2 ** 2))
 
 def sim_2_red(element1, element2):
     # element: (term, (numerator, denominator2))
     # print("semantic similarity phase 2 reduce --------------------------")
     # cannot square root and multiply the denominators until the end
     numerator = element1[0] + element2[0]
+    '''
     # denominator1 = element1[1] + element2[1]
     # an issue with calculating denominator1 this way:
         # it will only add the query's tfidf's square if there exists a corresponding term tfidf square
         # so instead, calculate denominator1 when we've collected the query's tfidfs
         # OR we add in placeholder 0s in all the terms' vectors
         # I mean... if we're sorting the list, we can just ignore all the denominator1s, since all the similarities will have it
+    '''
     denominator2 = element1[1] + element2[1]
     return (numerator, denominator2)
 
 def sim_3_map(element):
     # element: (term, (numerator, denominator2))
-    # output: (null, (term, semantic_similarity))
+    # output: (None, (term, semantic_similarity))
     # print("semantic similarity phase 3 map --------------------------")
     numerator = element[1][0]
-    # denominator1 = 1
     denominator2 = element[1][1]
+    # denominator1 = 1
     # print(element[0], numerator, denominator1, denominator2)
-    
     semantic_similarity = numerator / (denominator2 ** 0.5)
     return (None, (element[0], semantic_similarity))
 
@@ -146,19 +143,20 @@ def main():
         print(element)
 
 
-    # "partial" lets us pass arguments into the passed function
-
+    
+    # transform ((document_id, term), tf*idf) to (docid, (term, tfidf))
     similarities = term_tfidf.map(sim_1_map)
 
     # collect the tfidfs of the query term for all the documents into a dict
     query_tfidfs = similarities.filter(lambda x: x[1][0] == query.value).collect()
-    print('ppp', len(query_tfidfs))
     query_tfidfs = dict([(f[0], f[1][1]) for f in query_tfidfs])
-    # remove the tfidfs of the query term from similarities
+    # then remove the tfidfs of the query term from similarities
     similarities = similarities.filter(lambda x: x[1][0] != query.value)
     
-    # for every term in the doci, calculate v1*v2, v1*v1, and v2*v2, then group by term
+    # for every term in the doc, calculate v1*v2 and v2*v2, then group by term
+    # "partial" lets us pass arguments (dict of all the query's tfidfs) into the passed function
     similarities = similarities.map(partial(sim_2_map, query_tfidfs))
+    # (term, (numerator, denominator2))
 
     # sum to obtain the dot product (numerator), denominator 1, and denominator 2
     similarities = similarities.reduceByKey(sim_2_red)
@@ -169,11 +167,12 @@ def main():
     # filter out terms with similarities == 0 (from 72293 down to 29849)
     similarities = similarities.filter(lambda x: x[1][1] != 0)
 
+    # collect and sort the similarities, and return the top n terms
     top = similarities.top(10, key=lambda x: x[1][1])
     for element in top:
         print(element)
-    top = [f[1] for f in top]
-    print(top)
+    # top = [f[1] for f in top]
+    # print(top)
 
     query.unpersist()
 
