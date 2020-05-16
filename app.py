@@ -168,6 +168,9 @@ def main():
     # calculate the semantic similarity for each term
     similarities = similarities.map(sim_3_map)
 
+    # filter out terms with similarities == 0 (from 72293 down to 29849)
+    similarities = similarities.filter(lambda x: x[1][1] != 0)
+
     top5 = similarities.top(5, key=lambda x: x[1][1])
     top5 = [f[1][0] for f in top5]
     print(top5)
