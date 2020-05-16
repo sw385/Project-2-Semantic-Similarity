@@ -71,14 +71,19 @@ def sim_1_map(query, element):
     docid = element[0][0]
     term = element[0][1]
     tfidf = element[1]
-    return (docid, (query.value, term, tfidf))
+    return (docid, (query, term, tfidf))
 
 def sim_2_map(query_tfidfs, element):
     # element: (docid, (query, term, tfidf))
     # print("semantic similarity phase 2 map --------------------------")
-    # iterating through a list for every element = inefficient
+    # print(element)
     term = element[1][1]
-    v1 = [f for f in query_tfidfs if f[0] == element[0]][0][1][2]
+    # iterating through a list for every element = inefficient, use a dict instead
+    # v1 = [f for f in query_tfidfs if f[0] == element[0]][0][1][2]
+    if element[0] in query_tfidfs:
+        v1 = query_tfidfs[element[0]]    # the tfidf of our query for this docid
+    else:
+        v1 = 0
     v2 = element[1][2]
     return (term, (v1 * v2, v1 * v1, v2 * v2))
 
@@ -91,15 +96,18 @@ def sim_2_red(element1, element2):
     denominator2 = element1[2] + element2[2]
     return (numerator, denominator1, denominator2)
 
-def sim_4_map(element):
+def sim_3_map(element):
     # element: (term, (numerator, denominator1, denominator2))
     # output: (null, (term, semantic_similarity))
     print("semantic similarity phase 3 map --------------------------")
     numerator = element[1][0]
     denominator1 = element[1][1]
     denominator2 = element[1][2]
-    semantic_similarity = numerator / ((denominator1 ** 0.5) * (denominator2 ** 0.5))
-    return (null, (element[0], semantic_similarity))
+    try:
+        semantic_similarity = numerator / ((denominator1 ** 0.5) * (denominator2 ** 0.5))
+    except:
+        print(element[0])
+    return (None, (element[0], semantic_similarity))
 
 '''
 this step doesn't need a reduce, just turn the collection into a sorted list
@@ -133,14 +141,13 @@ def main():
 
     # ((document_id, term), tf*idf)
     term_tfidf = data_three
-
-
-
+    
 
 
     # print(term_tfidf.take(5))
+
     # "partial" lets us pass arguments into the passed function
-    similarities = term_tfidf.map(partial(sim_1_map, query))
+    similarities = term_tfidf.map(partial(sim_1_map, query.value))
     # print(similarities.take(5))
     # print(similarities.collect())
 
@@ -155,16 +162,34 @@ def main():
     # foreachPartition will encounter issues since we're in a single node
     # print(len(similarities.collect()))
     # I don't see a way to pass a different value into each partition's function call
-    query_tfidfs = similarities.filter(lambda x: x[1][0] == query.value).collect()
-    # print(query_tfidfs)
-    # similarities = similarities.filter(lambda x: x[1][0] != query.value)
+    
+    # total = similarities.collect()
+    # print(len(total))
+    query_tfidfs = similarities.filter(lambda x: x[1][1] == query.value).collect()
+    # print(len(query_tfidfs))
+    # print(query_tfidfs[:5])
+    query_tfidfs = [(f[0], f[1][2]) for f in query_tfidfs]
+    # print(query_tfidfs[:5])
+    # (docid, query's tfidf for that doc)
+    query_tfidfs = dict(query_tfidfs)
+    similarities = similarities.filter(lambda x: x[1][1] != query.value)
+    # total = similarities.collect()
+    # print(len(total))
+    
+    # for every term in the doci, calculate v1*v2, v1*v1, and v2*v2, then group by term
     similarities = similarities.map(partial(sim_2_map, query_tfidfs))
     # print(similarities.take(5))
 
+    # sum to obtain the dot product (numerator), denominator 1, and denominator 2
     similarities = similarities.reduceByKey(sim_2_red)
-    print(similarities.take(20))
-    # similarities = similarities.map(sim_3_map)
-    # similarities = similarities.reduce(sim_3_red)
+    # print(similarities.take(5))
+    # print(len(similarities.collect()))  # (number of unique terms + docids) - (number of lines/docids) - (1 for the query)
+
+    # calculate the semantic similarity for each term
+    similarities = similarities.map(sim_3_map)
+    # no reduce necessary
+    print(len(similarities.collect()))
+
 
     print('nathaniel')
 
