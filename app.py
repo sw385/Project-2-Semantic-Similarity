@@ -128,7 +128,8 @@ def main():
 
     # initialization
     sc = SparkContext("local", "project")
-    file = "project2_test.txt"
+    # file = "project2_test.txt"
+    file = "project2_egfr.txt"
     data = sc.textFile(file)
     query = sc.broadcast(argv[1])
     # convert unicode to ascii
@@ -150,78 +151,30 @@ def main():
 
     # for element in term_tfidf.collect():
         # print(element)
-    # print(term_tfidf.take(5))
 
     # "partial" lets us pass arguments into the passed function
     similarities = term_tfidf.map(partial(sim_1_map, query.value))
-    # for element in similarities.collect():
-        # print(element)
-    # print()
-    # print(similarities.take(5))
-    # print(similarities.collect())
 
-    # this is a map step, not a reduce step
-    # the issue here is that we need to pull out the query term's tf-idf in each partition
-    # a straightforward reduce would not be sufficient
-    # we have a collection/dataframe, but also need a particular value from that collection to be applied over the other values
-    # shouldn't use broadcast, the values we need are already collected within each node
-    # shouldn't use collect, since we need to "collect" for each dataframe
-    # aggregate?
-    # similarities.foreachPartition(function1)
-    # foreachPartition will encounter issues since we're in a single node
-    # print(len(similarities.collect()))
-    # I don't see a way to pass a different value into each partition's function call
-    
-    # total = similarities.collect()
-    # print(len(total))
     query_tfidfs = similarities.filter(lambda x: x[1][1] == query.value).collect()
-    # print(len(query_tfidfs))
-    # print(query_tfidfs[:5])
-    query_tfidfs = [(f[0], f[1][2]) for f in query_tfidfs]
-    # print(query_tfidfs[:5])
-    # (docid, query's tfidf for that doc)
-    query_tfidfs = dict(query_tfidfs)
+    query_tfidfs = dict([(f[0], f[1][2]) for f in query_tfidfs])
     similarities = similarities.filter(lambda x: x[1][1] != query.value)
-    # for element in query_tfidfs:
-        # print(query_tfidfs[element])
-    # print('nn')
-    # total = similarities.collect()
-    # print(len(total))
     
     # for every term in the doci, calculate v1*v2, v1*v1, and v2*v2, then group by term
     similarities = similarities.map(partial(sim_2_map, query_tfidfs))
-    # for element in similarities.collect():
-        # print(element)
-    # print('mm')
-    # print(similarities.take(5))
 
     # sum to obtain the dot product (numerator), denominator 1, and denominator 2
     similarities = similarities.reduceByKey(sim_2_red)
-    # for element in similarities.collect():
-        # print(element)
-    # print('ll')
-    # print(similarities.take(5))
-    # print(len(similarities.collect()))  # (number of unique terms + docids) - (number of lines/docids) - (1 for the query)
 
     # calculate the semantic similarity for each term
     similarities = similarities.map(sim_3_map)
-    # no reduce necessary
-    # print(len(similarities.collect()))
-    # for element in similarities.collect():
-        # print(element)
-    # print('hh')
 
-    # similarities = similarities.filter(lambda x: x[1][1] != 0)
-    # for element in similarities.collect():
-        # print(element)
-    # print('gg')
     top5 = similarities.top(5, key=lambda x: x[1][1])
     top5 = [f[1][0] for f in top5]
     print(top5)
 
-    # print('end')
-
     query.unpersist()
+
+    print('end')
 
 if __name__ == "__main__":
     main()
