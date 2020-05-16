@@ -49,15 +49,17 @@ def phaseThree(data, sc, num_of_documents):
     #reduce
     results = []
     mapped2 = mapped.groupByKey().mapValues(list).collect() # (term, [(document_id, term_occurrences, total_word_count_doc)])
+    print('ccc', mapped2)
     for term in mapped2:
         num_word_in_docs = len(term[1])
         for params in term[1]:
             pair = ((params[0], term[0]), (params[1], params[2], num_word_in_docs))
             results.append(pair)
+            print('lala', pair)
     reduced = sc.parallelize(results) # ((document_id, term), (term_occurrences, total_word_count_doc, num_word_in_all_docs))
-    reduced2 = reduced.map(lambda x: ((x[0][0], x[0][1]), ((float(x[1][0])/float(x[1][1]))*(log(float(num_of_documents)/float(x[1][2]))))))
+    reduced2 = reduced.map(lambda x: ((x[0][0], x[0][1]), ((float(x[1][0])/float(x[1][1]))*(log(float(num_of_documents)/float(x[1][2]),10)))))
     # ((document_id, term), tf*idf)
-    # print(reduced2.collect())
+    print('dvdv', reduced2.collect())
     return reduced2
 
 
@@ -90,7 +92,7 @@ def sim_2_map(query_tfidfs, element):
 def sim_2_red(element1, element2):
     # element: (term, (v1 * v2, v1 * v1, v2 * v2))
     # print("semantic similarity phase 2 reduce --------------------------")
-    # cannot square root and multiply until the end
+    # cannot square root and multiply the denominators until the end
     numerator = element1[0] + element2[0]
     denominator1 = element1[1] + element2[1]
     denominator2 = element1[2] + element2[2]
@@ -103,10 +105,11 @@ def sim_3_map(element):
     numerator = element[1][0]
     denominator1 = element[1][1]
     denominator2 = element[1][2]
+    print(element[0], numerator, denominator1, denominator2)
     try:
         semantic_similarity = numerator / ((denominator1 ** 0.5) * (denominator2 ** 0.5))
     except:
-        print(element[0])
+        semantic_similarity = 0
     return (None, (element[0], semantic_similarity))
 
 '''
@@ -129,6 +132,7 @@ def main():
     # convert unicode to ascii
     data = data.map(lambda x: x.encode("ascii", "ignore"))
     num_of_documents = data.count()
+    print('popo', num_of_documents)
 
     # first phase
     data_one = phaseOne(data, sc)
@@ -143,7 +147,8 @@ def main():
     term_tfidf = data_three
     
 
-
+    for element in term_tfidf.collect():
+        print(element)
     # print(term_tfidf.take(5))
 
     # "partial" lets us pass arguments into the passed function
