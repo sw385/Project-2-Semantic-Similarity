@@ -173,9 +173,10 @@ def main():
 
     # collect and sort the similarities, and return the top n terms
     top = similarities.top(5, key=lambda x: x[1][1])
-    print()
+    print('')
     for element in top:
-        print(element[1][0], element[1][1] / denominator1)
+        print("{:<50}{}".format(element[1][0], element[1][1] / denominator1))
+    print('')
 
     query.unpersist()
 
