@@ -152,6 +152,8 @@ def main():
     # collect the tfidfs of the query term for all the documents into a dict
     query_tfidfs = similarities.filter(lambda x: x[1][0] == query.value).collect()
     query_tfidfs = dict([(f[0], f[1][1]) for f in query_tfidfs])
+    # calculate denominator1 from the query's collected tfidfs
+    denominator1 = sum([query_tfidfs[f] ** 2 for f in query_tfidfs]) ** 0.5
     # then remove the tfidfs of the query term from similarities
     similarities = similarities.filter(lambda x: x[1][0] != query.value)
     
@@ -171,9 +173,10 @@ def main():
 
     # collect and sort the similarities, and return the top n terms
     top = similarities.top(5, key=lambda x: x[1][1])
-    print()
+    print('')
     for element in top:
-        print(element[1][0])
+        print("{:<50}{}".format(element[1][0], element[1][1] / denominator1))
+    print('')
 
     query.unpersist()
 
